@@ -1,4 +1,7 @@
 import streamlit as st
+import streamlit as st
+
+st.write("Secret exists:", "GROQ_API_KEY" in st.secrets)
 
 st.set_page_config(
     page_title="Zyro Dynamics HR Help Desk",
