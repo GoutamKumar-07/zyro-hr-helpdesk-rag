@@ -1,1 +1,12 @@
 streamlit
+langchain
+langchain-community
+langchain-core
+langchain-huggingface
+langchain-groq
+faiss-cpu
+pypdf
+sentence-transformers
+torch
+cryptography
+python-dotenv
