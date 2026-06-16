@@ -1,7 +1,13 @@
-import streamlit as st
+import os
 import streamlit as st
 
-st.write("Secret exists:", "GROQ_API_KEY" in st.secrets)
+from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_groq import ChatGroq
 
 st.set_page_config(
     page_title="Zyro Dynamics HR Help Desk",
@@ -9,88 +15,92 @@ st.set_page_config(
     layout="centered"
 )
 
-st.markdown("""
-<style>
-.main {
-    padding-top: 2rem;
-}
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
-.hero {
-    background: linear-gradient(135deg, #1f2937, #111827);
-    padding: 2rem;
-    border-radius: 15px;
-    color: white;
-    text-align: center;
-    margin-bottom: 2rem;
-}
+llm = ChatGroq(
+    api_key=GROQ_API_KEY,
+    model="llama-3.3-70b-versatile",
+    temperature=0
+)
 
-.feature-box {
-    background-color: #262730;
-    padding: 15px;
-    border-radius: 10px;
-    margin-bottom: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
+@st.cache_resource
+def build_rag():
 
-st.markdown("""
-<div class="hero">
-    <h1>💼 Zyro Dynamics HR Help Desk</h1>
-    <p>Instant answers from company HR policies</p>
-</div>
-""", unsafe_allow_html=True)
+    loader = PyPDFDirectoryLoader("data")
+    documents = loader.load()
 
-col1, col2 = st.columns(2)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
 
-with col1:
-    st.markdown("""
-    <div class="feature-box">
-    📄 Leave Policy
-    </div>
-    """, unsafe_allow_html=True)
+    chunks = splitter.split_documents(documents)
 
-    st.markdown("""
-    <div class="feature-box">
-    🏠 Work From Home
-    </div>
-    """, unsafe_allow_html=True)
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-mpnet-base-v2"
+    )
 
-    st.markdown("""
-    <div class="feature-box">
-    💰 Compensation & Benefits
-    </div>
-    """, unsafe_allow_html=True)
+    vectorstore = FAISS.from_documents(
+        chunks,
+        embeddings
+    )
 
-with col2:
-    st.markdown("""
-    <div class="feature-box">
-    📘 Employee Handbook
-    </div>
-    """, unsafe_allow_html=True)
+    retriever = vectorstore.as_retriever(
+        search_kwargs={"k": 6}
+    )
 
-    st.markdown("""
-    <div class="feature-box">
-    ⭐ Performance Reviews
-    </div>
-    """, unsafe_allow_html=True)
+    return retriever
 
-    st.markdown("""
-    <div class="feature-box">
-    🔒 IT & Data Security
-    </div>
-    """, unsafe_allow_html=True)
+retriever = build_rag()
 
-st.divider()
+RAG_PROMPT = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        """
+You are an HR assistant for Zyro Dynamics.
+
+Answer ONLY from the provided context.
+
+If information is unavailable respond exactly:
+
+I cannot answer this based on the available HR policy documents.
+"""
+    ),
+    (
+        "human",
+        "Context:\n{context}\n\nQuestion:\n{question}"
+    )
+])
+
+st.title("💼 Zyro Dynamics HR Help Desk")
 
 question = st.text_input(
-    "Ask an HR Question",
-    placeholder="e.g. What is the notice period for L5 employees?"
+    "Ask an HR Question"
 )
 
 if question:
-    st.success("Demo deployment for Zyro Dynamics RAG Challenge")
-    st.info(
-        "The complete RAG pipeline and retrieval system are implemented in the Kaggle notebook submission."
+
+    docs = retriever.invoke(question)
+
+    context = "\n\n".join(
+        d.page_content for d in docs
     )
 
-st.caption("Built using Streamlit • LangChain • FAISS • Groq")
+    chain = (
+        RAG_PROMPT
+        | llm
+        | StrOutputParser()
+    )
+
+    answer = chain.invoke({
+        "context": context,
+        "question": question
+    })
+
+    st.success(answer)
+
+    with st.expander("Sources"):
+        for d in docs:
+            st.write(
+                d.metadata.get("source", "")
+            )
