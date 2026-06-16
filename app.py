@@ -61,6 +61,13 @@ You are an HR assistant for Zyro Dynamics.
 
 Answer ONLY from the provided context.
 
+RULES:
+- Give the shortest correct answer possible.
+- Return exact numbers, dates, percentages, limits, durations and policy values.
+- Do NOT explain unless explicitly asked.
+- Do NOT add introductions.
+- Do NOT add conclusions.
+
 If information is unavailable respond exactly:
 
 I cannot answer this based on the available HR policy documents.
@@ -100,7 +107,12 @@ if question:
     st.success(answer)
 
     with st.expander("Sources"):
+        unique_sources = set()
+    
         for d in docs:
-            st.write(
+            unique_sources.add(
                 d.metadata.get("source", "")
             )
+    
+        for source in sorted(unique_sources):
+            st.write(source)
